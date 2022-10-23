@@ -20,6 +20,7 @@ var (
 	commandMu    sync.Mutex
 
 	rootVersion bool
+	workingDirectory string
 )
 
 // NewCommand creates a new 'git-lfs' sub command, given a command name and
@@ -95,6 +96,11 @@ Simply type ` + root.Name() + ` help [path to command] for full details.`,
 	root.Flags().BoolVarP(&rootVersion, "version", "v", false, "")
 
 	canonicalizeEnvironment()
+
+	cobra.OnInitialize(func(){
+		os.Chdir(workingDirectory)
+	})
+	root.PersistentFlags().StringVarP(&workingDirectory, "", "C", "", "")
 
 	cfg = config.New()
 
