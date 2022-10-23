@@ -2,6 +2,7 @@ package commands
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,6 +17,7 @@ import (
 
 var (
 	lockRemote string
+	singleRequest bool
 )
 
 func lockCommand(cmd *cobra.Command, args []string) {
@@ -30,34 +32,49 @@ func lockCommand(cmd *cobra.Command, args []string) {
 
 	success := true
 	locks := make([]locking.Lock, 0, len(args))
-	for _, path := range args {
-		path, err := lockPath(path)
-		if err != nil {
-			Error(err.Error())
-			success = false
-			continue
+
+	if singleRequest {
+		paths := make([]string, 0, len(args))
+		for _, path := range args {
+			path, err := lockPath(path)
+			if err != nil {
+				Error(err.Error())
+				success = false
+				continue
+			}
+			paths = append(paths, path)
 		}
+		
+		locks, _ = lockClient.LockFiles(paths)
+		fmt.Println(locks)
+	} else {
+		for _, path := range args {
+			path, err := lockPath(path)
+			if err != nil {
+				Error(err.Error())
+				success = false
+				continue
+			}
 
-		lock, err := lockClient.LockFile(path)
-		if err != nil {
-			Error(tr.Tr.Get("Locking %s failed: %v", path, errors.Cause(err)))
-			success = false
-			continue
+			lock, err := lockClient.LockFile(path)
+			if err != nil {
+				Error(tr.Tr.Get("Locking %s failed: %v", path, errors.Cause(err)))
+				success = false
+				continue
+			}
+
+			locks = append(locks, lock)
 		}
-
-		locks = append(locks, lock)
-
-		if locksCmdFlags.JSON {
-			continue
-		}
-
-		Print(tr.Tr.Get("Locked %s", path))
 	}
 
 	if locksCmdFlags.JSON {
 		if err := json.NewEncoder(os.Stdout).Encode(locks); err != nil {
 			Error(err.Error())
 			success = false
+		}
+	} else {
+		for _, lock := range locks {
+			Print(tr.Tr.Get("Locked %s", lock.Path))
 		}
 	}
 
@@ -129,5 +146,6 @@ func init() {
 	RegisterCommand("lock", lockCommand, func(cmd *cobra.Command) {
 		cmd.Flags().StringVarP(&lockRemote, "remote", "r", "", "specify which remote to use when interacting with locks")
 		cmd.Flags().BoolVarP(&locksCmdFlags.JSON, "json", "", false, "print output in json")
+		cmd.Flags().BoolVarP(&singleRequest, "single-request", "", false, "If specified, process multiple files as a single request")
 	})
 }

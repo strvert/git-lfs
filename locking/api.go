@@ -14,6 +14,7 @@ import (
 
 type lockClient interface {
 	Lock(remote string, lockReq *lockRequest) (*lockResponse, int, error)
+	MultiLock(remote string, lockReq *multiLockRequest) (*multiLockResponse, int, error)
 	Unlock(ref *git.Ref, remote, id string, force bool) (*unlockResponse, int, error)
 	Search(remote string, searchReq *lockSearchRequest) (*lockList, int, error)
 	SearchVerifiable(remote string, vreq *lockVerifiableRequest) (*lockVerifiableList, int, error)
@@ -59,6 +60,19 @@ type lockResponse struct {
 	RequestID        string `json:"request_id,omitempty"`
 }
 
+type multiLockRequest struct {
+	Paths []string `json:"paths"`
+	Ref *lockRef `json:"ref,omitempty"`
+}
+
+type multiLockResponse struct {
+	Lock []*Lock `json:"locks"`
+
+	Message          string `json:"message,omitempty"`
+	DocumentationURL string `json:"documentation_url,omitempty"`
+	RequestID        string `json:"request_id,omitempty"`
+}
+
 func (c *httpLockClient) Lock(remote string, lockReq *lockRequest) (*lockResponse, int, error) {
 	e := c.Endpoints.Endpoint("upload", remote)
 	req, err := c.NewRequest("POST", e, "locks", lockReq)
@@ -76,6 +90,34 @@ func (c *httpLockClient) Lock(remote string, lockReq *lockRequest) (*lockRespons
 	}
 
 	lockRes := &lockResponse{}
+	err = lfshttp.DecodeJSON(res, lockRes)
+	if err != nil {
+		return nil, res.StatusCode, err
+	}
+	if lockRes.Lock == nil && len(lockRes.Message) == 0 {
+		return nil, res.StatusCode, errors.New(tr.Tr.Get("invalid server response"))
+	}
+	fmt.Println(lockRes.Lock)
+	return lockRes, res.StatusCode, nil
+}
+
+func (c *httpLockClient) MultiLock(remote string, lockReq *multiLockRequest) (*multiLockResponse, int, error) {
+	e := c.Endpoints.Endpoint("upload", remote)
+	req, err := c.NewRequest("POST", e, "locks/multi", lockReq)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	req = c.Client.LogRequest(req, "lfs.locks.multilock")
+	res, err := c.DoAPIRequestWithAuth(remote, req)
+	if err != nil {
+		if res != nil {
+			return nil, res.StatusCode, err
+		}
+		return nil, 0, err
+	}
+
+	lockRes := &multiLockResponse{}
 	err = lfshttp.DecodeJSON(res, lockRes)
 	if err != nil {
 		return nil, res.StatusCode, err
@@ -354,6 +396,10 @@ func (c *genericLockClient) getClient(remote, operation string) lockClient {
 
 func (c *genericLockClient) Lock(remote string, lockReq *lockRequest) (*lockResponse, int, error) {
 	return c.getClient(remote, "upload").Lock(remote, lockReq)
+}
+
+func (c *genericLockClient) MultiLock(remote string, lockReq *multiLockRequest) (*multiLockResponse, int, error) {
+	return c.getClient(remote, "upload").MultiLock(remote, lockReq)
 }
 
 func (c *genericLockClient) Unlock(ref *git.Ref, remote, id string, force bool) (*unlockResponse, int, error) {

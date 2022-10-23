@@ -163,6 +163,10 @@ func (c *sshLockClient) Lock(remote string, lockReq *lockRequest) (*lockResponse
 	return &lock, status, err
 }
 
+func (c *sshLockClient) MultiLock(remote string, lockReq *multiLockRequest) (*multiLockResponse, int, error) {
+	return nil, 0, errors.New("Multi-lock is currently not supported by the SSH client.")
+}
+
 func (c *sshLockClient) Unlock(ref *git.Ref, remote, id string, force bool) (*unlockResponse, int, error) {
 	args := make([]string, 0, 3)
 	if ref != nil {

@@ -135,6 +135,47 @@ func (c *Client) LockFile(path string) (Lock, error) {
 	return lock, nil
 }
 
+func (c* Client) LockFiles(paths []string) ([]Lock, error) {
+	lockRes, _, err := c.client.MultiLock(c.Remote, &multiLockRequest{
+		Paths: paths,
+		Ref:  &lockRef{Name: c.RemoteRef.Refspec()},
+		})
+	if err != nil {
+		return []Lock{}, errors.Wrap(err, tr.Tr.Get("locking API"))
+	}
+
+	if len(lockRes.Message) > 0 {
+		if len(lockRes.RequestID) > 0 {
+			tracerx.Printf("Server Request ID: %s", lockRes.RequestID)
+		}
+		return []Lock{}, errors.New(tr.Tr.Get("server unable to create lock: %s", lockRes.Message))
+	}
+
+	locks := make([]Lock, 0, len(lockRes.Lock))
+	errs := make([]error, 0, len(lockRes.Lock))
+	for _, lock := range lockRes.Lock {
+		if err := c.cache.Add(*lock); err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		locks = append(locks, *lock)
+	}
+
+	// abs, err := getAbsolutePath(path)
+	// if err != nil {
+	// 	return []Lock{}, errors.Wrap(err, tr.Tr.Get("make lock path absolute"))
+	// }
+
+	// If the file exists, ensure that it's writeable on return
+	// if tools.FileExists(abs) {
+	// 	if err := tools.SetFileWriteFlag(abs, true); err != nil {
+	// 		return []Lock{}, errors.Wrap(err, tr.Tr.Get("set file write flag"))
+	// 	}
+	// }
+
+	return locks, errors.Wrap(err, tr.Tr.Get("lock cache"))
+}
+
 // getAbsolutePath takes a repository-relative path and makes it absolute.
 //
 // For instance, given a repository in /usr/local/src/my-repo and a file called
